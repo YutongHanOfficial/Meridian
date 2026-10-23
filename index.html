@@ -81,6 +81,7 @@
         <p class="brand-sub">No labels. No mercy. Just you and the planet.</p>
       </div>
       <div id="mode-grid" class="mode-grid"></div>
+      <button id="stats-btn" class="btn btn-stats"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Your stats</button>
       <div class="menu-help">
         <span><kbd>Drag</kbd> spin</span>
         <span><kbd>Scroll</kbd>/<kbd>Pinch</kbd> zoom</span>
@@ -97,15 +98,32 @@
       <h2 id="over-title"></h2>
       <div id="over-score" class="over-score">0</div>
       <div id="over-best" class="over-best hidden">New personal best</div>
+      <div id="over-note" class="over-note"></div>
       <div id="over-grid" class="over-grid"></div>
       <div id="over-stats" class="over-stats"></div>
       <div class="over-actions">
         <button id="again-btn" class="btn btn-primary">Play again</button>
         <button id="share-btn" class="btn hidden">Share result</button>
+        <button id="over-stats-btn" class="btn">Stats</button>
         <button id="menu-btn" class="btn">Menu</button>
       </div>
     </div>
   </section>
+
+  <section id="stats" class="overlay hidden">
+    <div class="stats-card" role="dialog" aria-label="Your stats">
+      <div class="stats-head">
+        <div><div class="over-mode">Your record</div><h2>Stats</h2></div>
+        <button id="stats-close" class="icon-btn" aria-label="Close stats"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="stats-body"></div>
+      <div class="stats-foot">
+        <span id="stats-since"></span>
+        <button id="stats-reset" class="btn btn-ghost">Reset stats</button>
+      </div>
+    </div>
+  </section>
+  <div id="chart-tip"></div>
 
   <script src="lib/d3.min.js"></script>
   <script src="lib/topojson-client.min.js"></script>

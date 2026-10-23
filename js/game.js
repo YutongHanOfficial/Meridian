@@ -2,6 +2,9 @@
 
 (() => {
   const R = 6371;
+  // If audio.js fails to load, play silently instead of crashing.
+  const silent = { isMuted: () => true, toggle: () => true };
+  const sfx = typeof Sfx !== 'undefined' ? Sfx : new Proxy(silent, { get: (t, k) => t[k] || (() => {}) });
   const COLORS = { good: '#3ddc97', bad: '#ff4d6d', warn: '#ffc857', cyan: '#5ee6ff', pink: '#ff7ad9', white: '#ffffff' };
   const $ = s => document.querySelector(s);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -32,13 +35,15 @@
   const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
   const arrowFor = deg => ARROWS[Math.round(deg / 45) % 8];
 
+  const DAY_ONE = Date.UTC(2026, 9, 22); // Daily #1
+
   function todayKey() {
     const d = new Date();
     return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
   }
   function dailyNumber() {
     const d = new Date();
-    return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(2026, 0, 1)) / 864e5) + 1;
+    return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - DAY_ONE) / 864e5) + 1;
   }
 
   // ---------- world ----------
@@ -220,6 +225,7 @@
             resolve({
               ok: true, base: 100 + Math.round(160 * tf), grade: tf > 0.45 ? 'g' : 'y',
               title: target.name, detail: tf > 0.7 ? 'Lightning fast' : tf > 0.45 ? 'Direct hit' : 'Found it',
+              stat: { found: target.name },
               reveal: () => revealCountry(target),
             });
             return;
@@ -229,6 +235,7 @@
           resolve({
             ok: false, title: f ? `That's ${f.name}` : 'That’s open ocean',
             detail: `${target.name} was ${fmt(d)} km away`,
+            stat: { miss: target.name },
             reveal: () => {
               if (f) { globe.setHL(f, 'bad'); globe.addMarker(ll, { color: COLORS.bad, size: 4 }); }
               globe.addArc(ll, target.focus, COLORS.bad);
@@ -237,7 +244,7 @@
           });
         },
         timeout() {
-          resolve({ ok: false, title: 'Out of time', detail: `${target.name} is here`, reveal: () => revealCountry(target) });
+          resolve({ ok: false, title: 'Out of time', detail: `${target.name} is here`, stat: { miss: target.name }, reveal: () => revealCountry(target) });
         },
       };
     },
@@ -272,6 +279,7 @@
             grade: d < thr * 0.3 ? 'g' : ok ? 'y' : 'r',
             title: ok ? (bull ? 'Bullseye!' : d < thr * 0.3 ? 'Sharp shot' : 'Inside the zone') : 'Outside the zone',
             detail: `${fmt(d)} km from ${city[0]}`,
+            stat: { km: d, city: city[0] },
             reveal: () => showCity(ok, cl),
           });
         },
@@ -312,7 +320,7 @@
           const tip = chain[chain.length - 1];
           const at = chain.indexOf(f);
           if (at >= 0) {
-            if (at < chain.length - 1) { chain.splice(at + 1); Sfx.soft(); drawChain(); }
+            if (at < chain.length - 1) { chain.splice(at + 1); sfx.soft(); drawChain(); }
             return;
           }
           if (!tip.adj.has(f.idx)) {
@@ -324,7 +332,7 @@
             return;
           }
           chain.push(f); moves++;
-          Sfx.click();
+          sfx.click();
           globe.burst(xy, COLORS.warn, 12);
           drawChain();
           if (f === e) {
@@ -333,6 +341,7 @@
               ok: true, great: perfect,
               base: Math.max(50, Math.round(500 * par / moves) + Math.round(200 * timeFrac()) - (G.daily ? h.strikes * 75 : 0)),
               grade: perfect ? 'g' : 'y',
+              stat: { perfect },
               title: perfect ? 'Perfect route!' : moves === par ? 'Par route' : `Connected in ${moves}`,
               detail: moves === par ? `Matched par ${par}` : `Par was ${par}: ${route.map(c => c.name).join(' → ')}`,
               reveal: () => chain.forEach((c, i) => globe.addMarker(c.focus, { label: c.name, color: i === 0 ? COLORS.cyan : i === chain.length - 1 ? COLORS.pink : COLORS.warn, size: 3 })),
@@ -383,18 +392,19 @@
               base: [320, 200, 110][wrong.length] + Math.round(140 * timeFrac()),
               grade: wrong.length === 0 ? 'g' : 'y', title: target.name,
               detail: wrong.length ? `Got it on guess ${wrong.length + 1}` : 'First guess',
+              stat: { found: target.name, first: wrong.length === 0 },
               reveal,
             });
             return;
           }
           wrong.push(f);
-          Sfx.soft();
+          sfx.soft();
           addGuessRow(f, target);
           if (wrong.length === 1) { drawShape(target, rotate, true); addBadge('Surroundings revealed'); }
           if (wrong.length === 2) addBadge(`Starts with “${target.name[0]}”`);
-          if (wrong.length >= 3) resolve({ ok: false, title: 'Out of guesses', detail: `It was ${target.name}`, reveal });
+          if (wrong.length >= 3) resolve({ ok: false, title: 'Out of guesses', detail: `It was ${target.name}`, stat: { miss: target.name }, reveal });
         },
-        timeout() { resolve({ ok: false, title: 'Out of time', detail: `It was ${target.name}`, reveal }); },
+        timeout() { resolve({ ok: false, title: 'Out of time', detail: `It was ${target.name}`, stat: { miss: target.name }, reveal }); },
         cleanup() { hideShape(); globe.dimTarget = 0; globe.autoSpin = 0; },
       };
       return h;
@@ -411,18 +421,20 @@
 
   // ---------- flow ----------
   async function startGame(mode) {
-    Sfx.unlock();
+    sfx.unlock();
     const daily = mode === 'daily';
     G = {
       mode, daily, round: 0, score: 0, lives: daily ? Infinity : 3, streak: 0, bestStreak: 0,
       hits: 0, total: 0, grades: [], used: new Set(), dists: [],
       rng: daily ? mulberry32(todayKey() * 7919) : Math.random, state: 'countdown', h: null, timer: null,
+      // Only the first daily attempt of the day counts; replays are practice.
+      official: daily && !lsGet('meridian.daily.' + todayKey(), null),
     };
     $('#menu').classList.add('hidden');
     $('#over').classList.add('hidden');
     $('#hud').classList.remove('hidden');
     $('#controls').classList.add('in-game');
-    $('#hud-mode').textContent = MODES[mode].name;
+    $('#hud-mode').textContent = MODES[mode].name + (daily && !G.official ? ' · Practice' : '');
     shownScore = 0;
     $('#hud-score').dataset.v = 0;
     globe.reset();
@@ -446,11 +458,13 @@
     document.body.classList.toggle('playing', globe.interactive);
     G.h.start && G.h.start();
     G.timer = { t0: performance.now(), dur: G.h.duration * 1000, lastTick: 99 };
+    // Lock the official attempt the moment it starts, so quitting can't buy a retry.
+    if (G.official && G.round === 0) saveDailyProgress(false);
     renderHud();
   }
 
   function strike(msg) {
-    Sfx.bad();
+    sfx.bad();
     shake();
     toast(msg, 'bad');
     if (G.daily) return;
@@ -474,19 +488,22 @@
       G.hits++;
       G.bestStreak = Math.max(G.bestStreak, G.streak);
       pts = Math.round(res.base * mult());
-      (res.great || res.grade === 'g' ? Sfx.great : Sfx.good)();
+      (res.great || res.grade === 'g' ? sfx.great : sfx.good)();
     } else {
       G.streak = 0;
       if (!G.daily && !res.noLife) G.lives--;
-      Sfx.bad();
+      sfx.bad();
       shake();
     }
     G.score += pts;
     G.grades.push(res.ok ? (res.grade || 'g') : 'r');
+    const secs = G.timer ? (performance.now() - G.timer.t0) / 1000 : 0;
     G.timer = null;
+    recordRound(G.h.type, res, secs);
     renderHud(!res.ok);
     if (res.reveal) res.reveal();
     G.over = G.daily ? G.round >= DAILY_SEQ.length - 1 : G.lives <= 0;
+    if (G.official) saveDailyProgress(G.over);
     showFeedback(res, pts);
     clearTimeout(G.auto);
     G.auto = setTimeout(next, G.over ? 3400 : 3600);
@@ -504,7 +521,7 @@
 
   function gameOver() {
     G.state = 'over';
-    Sfx.over();
+    sfx.over();
     globe.reset();
     globe.interactive = false;
     globe.hoverEnabled = false;
@@ -512,11 +529,13 @@
     globe.autoSpin = 5;
     $('#hud').classList.add('hidden');
     $('#controls').classList.remove('in-game');
+    const practice = G.daily && !G.official;
     const key = 'meridian.best.' + G.mode;
     const prevBest = lsGet(key, 0);
-    const isBest = G.score > prevBest;
+    const isBest = !practice && G.score > prevBest;
     if (isBest) lsSet(key, G.score);
-    if (G.daily) lsSet('meridian.daily.' + todayKey(), { score: G.score, grades: G.grades });
+    recordGame();
+    const official = G.daily ? lsGet('meridian.daily.' + todayKey(), null) : null;
 
     const acc = G.total ? Math.round(100 * G.hits / G.total) : 0;
     const stats = [
@@ -529,8 +548,11 @@
       stats.push(['Avg miss', fmt(avg) + ' km']);
     } else stats.push(['Personal best', fmt(Math.max(prevBest, G.score))]);
 
-    $('#over-mode').textContent = MODES[G.mode].name + (G.daily ? ` #${dailyNumber()}` : '');
-    $('#over-title').textContent = G.daily ? 'Gauntlet complete' : rankTitle(G.total);
+    $('#over-mode').textContent = MODES[G.mode].name + (G.daily ? ` #${dailyNumber()}` : '') + (practice ? ' · Practice' : '');
+    $('#over-title').textContent = practice ? 'Practice run' : G.daily ? 'Gauntlet complete' : rankTitle(G.total);
+    $('#over-note').innerHTML = practice && official
+      ? `Practice doesn\u2019t count. Today\u2019s official score: <b>${fmt(official.score)}</b>`
+      : G.daily ? `Official score locked in. Daily streak: <b>${dailyStreaks().current}</b>` : '';
     $('#over-score').textContent = '0';
     countUp($('#over-score'), G.score, 1200);
     $('#over-best').classList.toggle('hidden', !isBest || G.score === 0);
@@ -616,7 +638,7 @@
     fill.classList.toggle('warn', frac < 0.3);
     $('#timer-text').textContent = (left / 1000).toFixed(1) + 's';
     const secs = Math.ceil(left / 1000);
-    if (secs <= 3 && secs < G.timer.lastTick && secs > 0) { G.timer.lastTick = secs; Sfx.tick(); }
+    if (secs <= 3 && secs < G.timer.lastTick && secs > 0) { G.timer.lastTick = secs; sfx.tick(); }
     if (left <= 0) G.h.timeout();
   }
 
@@ -652,7 +674,7 @@
       if (!G || G.state !== 'countdown') return;
       el.textContent = t;
       el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-      (t === 'GO' ? Sfx.go : Sfx.count)();
+      (t === 'GO' ? sfx.go : sfx.count)();
       await sleep(t === 'GO' ? 450 : 620);
     }
     el.classList.remove('show');
@@ -766,6 +788,177 @@
     G.h.submit(name);
   }
 
+  // ---------- lifetime stats ----------
+  const STATS_KEY = 'meridian.stats';
+  const freshStats = () => ({
+    games: {}, rounds: {}, wins: {}, points: 0, bestStreak: 0, found: {}, misses: {},
+    pins: 0, pinKm: 0, bullseyes: 0, closest: null, perfectRoutes: 0, firstGuess: 0, fastest: null,
+    since: Date.now(),
+  });
+  let STATS = Object.assign(freshStats(), lsGet(STATS_KEY, {}));
+  const saveStats = () => lsSet(STATS_KEY, STATS);
+  const inc = (obj, k, n = 1) => { obj[k] = (obj[k] || 0) + n; };
+  const sum = obj => Object.values(obj).reduce((a, b) => a + b, 0);
+
+  function recordRound(type, res, secs) {
+    const s = res.stat || {};
+    inc(STATS.rounds, type);
+    if (res.ok) inc(STATS.wins, type);
+    if (s.found) STATS.found[s.found] = true;
+    if (s.miss) inc(STATS.misses, s.miss);
+    if (type === 'hunt' && res.ok && (!STATS.fastest || secs < STATS.fastest.secs)) STATS.fastest = { secs, name: s.found };
+    if (s.km != null) {
+      STATS.pins++;
+      STATS.pinKm += s.km;
+      if (s.km < 30) STATS.bullseyes++;
+      if (!STATS.closest || s.km < STATS.closest.km) STATS.closest = { km: s.km, city: s.city };
+    }
+    if (s.perfect) STATS.perfectRoutes++;
+    if (s.first) STATS.firstGuess++;
+    STATS.bestStreak = Math.max(STATS.bestStreak, G.streak);
+    saveStats();
+  }
+
+  function recordGame() {
+    inc(STATS.games, G.mode);
+    STATS.points += G.score;
+    saveStats();
+  }
+
+  function saveDailyProgress(done) {
+    lsSet('meridian.daily.' + todayKey(), { score: G.score, grades: G.grades, done });
+    const log = lsGet('meridian.dailyLog', {});
+    log[dailyNumber()] = { score: G.score, hits: G.hits, done };
+    lsSet('meridian.dailyLog', log);
+  }
+
+  function dailyStreaks() {
+    const log = lsGet('meridian.dailyLog', {});
+    const today = dailyNumber();
+    let current = 0;
+    for (let d = log[today] ? today : today - 1; log[d]; d--) current++;
+    let max = 0, run = 0, prev = null;
+    for (const d of Object.keys(log).map(Number).sort((a, b) => a - b)) {
+      run = prev === d - 1 ? run + 1 : 1;
+      max = Math.max(max, run);
+      prev = d;
+    }
+    return { current, max, log };
+  }
+
+  function tile(v, k, accent = '') {
+    return `<div class="stat ${accent}"><div class="stat-v">${v}</div><div class="stat-k">${k}</div></div>`;
+  }
+
+  function renderStats() {
+    const rounds = sum(STATS.rounds), wins = sum(STATS.wins), games = sum(STATS.games);
+    const body = $('#stats-body');
+    if (!rounds) {
+      body.innerHTML = '<p class="stats-empty">No rounds yet. Play anything and your record starts here.</p>';
+      $('#stats-since').textContent = '';
+      return;
+    }
+    const acc = Math.round(100 * wins / rounds);
+
+    // atlas
+    const total = POOL.hunt.length;
+    const found = POOL.hunt.filter(f => STATS.found[f.name]).length;
+    const atlasPct = Math.round(100 * found / total);
+
+    // modes
+    const modeRows = Object.entries(MODES).filter(([k]) => k !== 'daily').map(([k, m]) => {
+      const r = STATS.rounds[k] || 0, w = STATS.wins[k] || 0, pct = r ? Math.round(100 * w / r) : 0;
+      return `<div class="mrow">
+        <span class="mrow-name">${m.name}</span>
+        <span class="mrow-best">${lsGet('meridian.best.' + k, 0) ? fmt(lsGet('meridian.best.' + k, 0)) : '–'}</span>
+        <span class="mrow-bar" title="${w} of ${r} rounds won"><i style="width:${pct}%"></i></span>
+        <span class="mrow-pct">${r ? pct + '%' : '–'}</span>
+      </div>`;
+    }).join('');
+
+    // daily history: last 14 days, official runs only
+    const { current, max, log } = dailyStreaks();
+    const played = Object.keys(log).length;
+    const today = dailyNumber();
+    const days = [];
+    for (let d = today - 13; d <= today; d++) days.push(d);
+    const scores = Object.values(log).map(x => x.score);
+    const top = Math.max(1, ...scores);
+    const bars = days.map(d => {
+      if (d < 1) return '<div class="dcol pre"></div>';
+      const e = log[d];
+      const h = e ? Math.max(4, Math.round(100 * e.score / top)) : 0;
+      const tip = e ? `#${d} · ${fmt(e.score)} pts · ${e.hits}/${DAILY_SEQ.length}${e.done ? '' : ' (unfinished)'}` : `#${d} · not played`;
+      return `<div class="dcol${d === today ? ' today' : ''}" data-tip="${tip}">
+        ${e ? `<i class="dbar" style="height:${h}%"></i>` : '<i class="dnone"></i>'}
+      </div>`;
+    }).join('');
+    const dayLabels = days.map(d => `<span>${d === today ? 'Today' : d >= 1 && (today - d) % 3 === 0 ? '#' + d : ''}</span>`).join('');
+
+    // highlights
+    const hl = [
+      STATS.fastest ? [`${STATS.fastest.secs.toFixed(1)}s`, `Fastest find · ${esc(STATS.fastest.name)}`] : null,
+      STATS.closest ? [`${fmt(STATS.closest.km)} km`, `Closest pin · ${esc(STATS.closest.city)}`] : null,
+      STATS.pins ? [`${fmt(STATS.pinKm / STATS.pins)} km`, 'Average pin miss'] : null,
+      [fmt(STATS.bullseyes), 'Bullseyes (&lt;30 km)'],
+      [fmt(STATS.perfectRoutes), 'Perfect border routes'],
+      [fmt(STATS.firstGuess), 'First-guess shapes'],
+    ].filter(Boolean).map(([v, k]) => tile(v, k)).join('');
+
+    const nemesis = Object.entries(STATS.misses).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const worst = nemesis.length ? nemesis[0][1] : 1;
+    const nemesisHtml = nemesis.length
+      ? nemesis.map(([n, c]) => `<div class="nrow"><span>${esc(n)}</span><span class="nbar"><i style="width:${Math.round(100 * c / worst)}%"></i></span><span class="ncount">${c}×</span></div>`).join('')
+      : '<p class="stats-muted">Nothing has beaten you yet.</p>';
+
+    body.innerHTML = `
+      <div class="stats-tiles">
+        ${tile(fmt(games), 'Games')}${tile(fmt(rounds), 'Rounds')}${tile(acc + '%', 'Accuracy')}
+        ${tile(fmt(STATS.points), 'Total points')}${tile(fmt(STATS.bestStreak), 'Best streak')}
+      </div>
+
+      <h3>Atlas</h3>
+      <div class="atlas">
+        <div class="atlas-top"><span><b>${found}</b> of ${total} countries found</span><span class="atlas-pct">${atlasPct}%</span></div>
+        <div class="atlas-bar"><i style="width:${atlasPct}%"></i></div>
+        <p class="stats-muted">Countries you’ve found in Country Hunt or named in Shape Shift.</p>
+      </div>
+
+      <h3>Modes</h3>
+      <div class="mtable">
+        <div class="mrow mhead"><span>Mode</span><span>Best</span><span>Rounds won</span><span></span></div>
+        ${modeRows}
+      </div>
+
+      <h3>Daily Gauntlet</h3>
+      <div class="stats-tiles four">
+        ${tile(fmt(played), 'Days played')}${tile(fmt(current), 'Current streak', current > 1 ? 'hot' : '')}
+        ${tile(fmt(max), 'Longest streak')}${tile(fmt(lsGet('meridian.best.daily', 0)), 'Best score')}
+      </div>
+      <div class="dchart" aria-label="Official daily scores, last 14 days">
+        <div class="dbars">${bars}</div>
+        <div class="dlabels">${dayLabels}</div>
+      </div>
+
+      <h3>Highlights</h3>
+      <div class="stats-tiles three">${hl}</div>
+
+      <h3>Nemesis countries</h3>
+      <div class="nemesis">${nemesisHtml}</div>
+    `;
+    $('#stats-since').textContent = 'Tracking since ' + new Date(STATS.since).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function showStats() {
+    renderStats();
+    $('#stats').classList.remove('hidden');
+  }
+
+  function hideStats() {
+    $('#stats').classList.add('hidden');
+    $('#chart-tip').classList.remove('show');
+  }
+
   // ---------- menu ----------
   function showMenu() {
     $('#menu').classList.remove('hidden');
@@ -782,7 +975,13 @@
       const best = lsGet('meridian.best.' + k, 0);
       const pips = [1, 2, 3, 4].map(i => `<i class="${i <= m.diff ? 'on' : ''}"></i>`).join('');
       let foot = best ? `Best <b>${fmt(best)}</b>` : 'Not played yet';
-      if (k === 'daily') foot = daily ? `Today <b>${fmt(daily.score)}</b> · replay for fun` : `#${dailyNumber()} · fresh today`;
+      if (k === 'daily') {
+        const streak = dailyStreaks().current;
+        foot = daily
+          ? `Today <b>${fmt(daily.score)}</b>${daily.done ? '' : ' (unfinished)'} · replays are practice`
+          : `#${dailyNumber()} · your first run counts`;
+        if (streak > 1) foot += ` · ${streak}-day streak`;
+      }
       return `<button class="mode-card ${k === 'daily' ? 'daily' : ''}" data-mode="${k}">
         <div class="mc-top"><span class="mc-icon">${m.icon}</span><span class="pips" title="Difficulty">${pips}</span></div>
         <div class="mc-name">${m.name}</div>
@@ -794,9 +993,10 @@
 
   function shareDaily() {
     const rows = [];
-    const cells = G.grades.map(g => ({ g: '🟩', y: '🟨', r: '🟥' }[g]));
+    const rec = lsGet('meridian.daily.' + todayKey(), null) || { score: G.score, grades: G.grades };
+    const cells = rec.grades.map(g => ({ g: '🟩', y: '🟨', r: '🟥' }[g]));
     for (let i = 0; i < cells.length; i += 5) rows.push(cells.slice(i, i + 5).join(''));
-    const text = `MERIDIAN Daily #${dailyNumber()} · ${fmt(G.score)} pts\n${rows.join('\n')}\n${location.href.split('#')[0]}`;
+    const text = `MERIDIAN Daily #${dailyNumber()} · ${fmt(rec.score)} pts\n${rows.join('\n')}\n${location.href.split('#')[0]}`;
     const done = () => toast('Copied to clipboard', 'good');
     if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => window.prompt('Copy your result:', text));
     else window.prompt('Copy your result:', text);
@@ -828,14 +1028,39 @@
     $('#again-btn').addEventListener('click', () => startGame(G.mode));
     $('#menu-btn').addEventListener('click', quit);
     $('#share-btn').addEventListener('click', shareDaily);
+    $('#stats-btn').addEventListener('click', showStats);
+    $('#over-stats-btn').addEventListener('click', showStats);
+    $('#stats-close').addEventListener('click', hideStats);
+    $('#stats').addEventListener('click', e => { if (e.target.id === 'stats') hideStats(); });
+    $('#stats-reset').addEventListener('click', () => {
+      if (!window.confirm('Reset all stats and best scores? Today\u2019s daily result stays locked.')) return;
+      STATS = freshStats();
+      saveStats();
+      Object.keys(MODES).forEach(k => lsSet('meridian.best.' + k, 0));
+      lsSet('meridian.dailyLog', {});
+      renderStats();
+      renderMenu();
+    });
+    // One tooltip for the daily chart; the whole column is the hit target.
+    const tip = $('#chart-tip');
+    $('#stats-body').addEventListener('pointerover', e => {
+      const col = e.target.closest('.dcol');
+      if (!col) { tip.classList.remove('show'); return; }
+      tip.textContent = col.dataset.tip;
+      const r = col.getBoundingClientRect();
+      tip.style.left = (r.left + r.width / 2) + 'px';
+      tip.style.top = (r.top - 8) + 'px';
+      tip.classList.add('show');
+    });
+    $('#stats-body').addEventListener('pointerleave', () => tip.classList.remove('show'));
     $('#next-btn').addEventListener('click', next);
     $('#quit-btn').addEventListener('click', quit);
     $('#zin').addEventListener('click', () => { globe.anim = null; globe.setZoom(globe.zoom * 1.5); });
     $('#zout').addEventListener('click', () => { globe.anim = null; globe.setZoom(globe.zoom / 1.5); });
     $('#zreset').addEventListener('click', () => globe.flyTo(globe.center(), 1, 700));
     const muteBtn = $('#mute');
-    const syncMute = () => muteBtn.classList.toggle('muted', Sfx.isMuted());
-    muteBtn.addEventListener('click', () => { Sfx.unlock(); Sfx.toggle(); syncMute(); });
+    const syncMute = () => muteBtn.classList.toggle('muted', sfx.isMuted());
+    muteBtn.addEventListener('click', () => { sfx.unlock(); sfx.toggle(); syncMute(); });
     syncMute();
 
     globe.onClick = (ll, xy) => {
@@ -876,6 +1101,7 @@
       if ((e.key === ' ' || e.key === 'Enter') && G && G.state === 'reveal') { e.preventDefault(); next(); }
       else if (e.key === '+' || e.key === '=') globe.setZoom(globe.zoom * 1.4);
       else if (e.key === '-' || e.key === '_') globe.setZoom(globe.zoom / 1.4);
+      else if (e.key === 'Escape' && !$('#stats').classList.contains('hidden')) hideStats();
       else if (e.key === 'Escape' && G && G.state !== 'over') quit();
     });
     window.addEventListener('resize', drawStars);
@@ -900,13 +1126,19 @@
       console.error(err);
       return;
     }
-    globe = new Globe($('#globe'), W);
-    globe.autoSpin = 5;
-    globe.hoverEnabled = false;
-    buildPools();
-    wire();
-    renderMenu();
-    timerLoop();
+    try {
+      globe = new Globe($('#globe'), W);
+      globe.autoSpin = 5;
+      globe.hoverEnabled = false;
+      buildPools();
+      wire();
+      renderMenu();
+      timerLoop();
+    } catch (err) {
+      $('#loading').innerHTML = `<p>Something went wrong starting the game.<br><small>${esc(err.message)}</small></p>`;
+      console.error(err);
+      return;
+    }
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').classList.add('hidden'), 700);
     $('#menu').classList.remove('hidden');
