@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Meridian — Geography Gauntlet</title>
+  <meta name="description" content="A fast, hard geography game on a 3D globe: find countries, drop pins on cities, chain borders and name silhouettes.">
+  <meta name="theme-color" content="#030712">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%230a2b54' stroke='%235ee6ff' stroke-width='4'/%3E%3Cpath d='M32 4v56M4 32h56M12 16c12 6 28 6 40 0M12 48c12-6 28-6 40 0' stroke='%235ee6ff' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="stars"></canvas>
+  <canvas id="globe"></canvas>
+
+  <div id="loading"><div class="spinner"></div><p>Charting the world…</p></div>
+
+  <header id="hud" class="hidden">
+    <div class="hud-left">
+      <div id="hud-mode" class="hud-mode"></div>
+      <div id="hud-round" class="hud-round"></div>
+    </div>
+    <div id="prompt" class="prompt">
+      <div id="p-label" class="p-label"></div>
+      <div id="p-main" class="p-main"></div>
+      <div id="p-sub" class="p-sub"></div>
+      <div class="timer"><div id="timer-fill"></div></div>
+      <div id="timer-text" class="timer-text"></div>
+    </div>
+    <div class="hud-right">
+      <div class="score-wrap">
+        <div id="hud-score" class="hud-score">0</div>
+        <div id="hud-mult" class="hud-mult"></div>
+      </div>
+      <div id="hud-lives" class="hud-lives"></div>
+      <div id="hud-streak" class="hud-streak"></div>
+    </div>
+  </header>
+
+  <div id="toast"></div>
+  <div id="chain" class="hidden"></div>
+
+  <div id="shape-panel" class="hidden">
+    <div class="shape-card">
+      <canvas id="shape-canvas"></canvas>
+      <div id="shape-badges" class="shape-badges"></div>
+      <div id="guess-list" class="guess-list"></div>
+      <div id="guess-box" class="guess-box">
+        <input id="guess-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type a country…" disabled>
+        <ul id="suggest"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="feedback" class="hidden">
+    <div id="fb-points" class="fb-points"></div>
+    <div id="fb-title" class="fb-title"></div>
+    <div id="fb-detail" class="fb-detail"></div>
+    <div id="fb-extra" class="fb-extra"></div>
+    <button id="next-btn" class="btn btn-primary">Next</button>
+  </div>
+
+  <div id="countdown"></div>
+
+  <nav id="controls">
+    <button id="zin" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="zout" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+    <button id="zreset" title="Reset zoom" aria-label="Reset zoom"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+    <button id="mute" title="Sound" aria-label="Toggle sound"><svg class="on" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg><svg class="off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg></button>
+    <button id="quit-btn" class="game-only" title="Quit to menu (Esc)" aria-label="Quit"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </nav>
+
+  <section id="menu" class="overlay hidden">
+    <div class="menu-inner">
+      <div class="brand">
+        <div class="brand-kicker">A geography gauntlet</div>
+        <h1>MERIDIAN</h1>
+        <p class="brand-sub">No labels. No mercy. Just you and the planet.</p>
+      </div>
+      <div id="mode-grid" class="mode-grid"></div>
+      <div class="menu-help">
+        <span><kbd>Drag</kbd> spin</span>
+        <span><kbd>Scroll</kbd>/<kbd>Pinch</kbd> zoom</span>
+        <span><kbd>Click</kbd> answer</span>
+        <span><kbd>Space</kbd> next</span>
+        <span><kbd>Esc</kbd> quit</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="over" class="overlay hidden">
+    <div class="over-card">
+      <div id="over-mode" class="over-mode"></div>
+      <h2 id="over-title"></h2>
+      <div id="over-score" class="over-score">0</div>
+      <div id="over-best" class="over-best hidden">New personal best</div>
+      <div id="over-grid" class="over-grid"></div>
+      <div id="over-stats" class="over-stats"></div>
+      <div class="over-actions">
+        <button id="again-btn" class="btn btn-primary">Play again</button>
+        <button id="share-btn" class="btn hidden">Share result</button>
+        <button id="menu-btn" class="btn">Menu</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="lib/d3.min.js"></script>
+  <script src="lib/topojson-client.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/globe.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
