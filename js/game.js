@@ -308,34 +308,55 @@
       const h = {
         type: 'border', label: 'Connect',
         main: `<span class="c-start">${esc(s.name)}</span><span class="c-arrow">→</span><span class="c-end">${esc(e.name)}</span>`,
-        sub: `Par <b>${par}</b> · click bordering countries one by one`,
-        duration: 30 + par * 8, hover: true, strikes: 0,
+        sub: `Par <b>${par}</b> · type each bordering country in order`,
+        duration: 35 + par * 10, hover: false, clickable: false, strikes: 0,
         start() {
           drawChain();
           $('#chain').classList.remove('hidden');
+          const input = $('#route-input');
+          input.value = '';
+          input.disabled = false;
+          renderSuggest(input);
+          setTimeout(() => input.focus(), 50);
           fitTwo(s.focus, e.focus, Math.max(s.radius, e.radius) + 4);
         },
-        click(ll, f, xy) {
-          if (!f) { toast('That’s open water'); return; }
+        backtrack(i) {
+          if (G.state !== 'playing' || i >= chain.length - 1) return;
+          chain.splice(i + 1);
+          sfx.soft();
+          drawChain();
+          $('#route-input').focus();
+        },
+        submit(name) {
+          const f = NAME_INDEX.get(norm(name));
+          if (!f) { shakeInput('Not a country on this map', '#route-box'); return; }
+          const input = $('#route-input');
+          input.value = '';
+          renderSuggest(input);
           const tip = chain[chain.length - 1];
           const at = chain.indexOf(f);
           if (at >= 0) {
-            if (at < chain.length - 1) { chain.splice(at + 1); sfx.soft(); drawChain(); }
+            if (at < chain.length - 1) h.backtrack(at);
+            else shakeInput(`You\u2019re already at ${f.name}`, '#route-box');
             return;
           }
+          const at2 = globe.project(f.focus);
           if (!tip.adj.has(f.idx)) {
             h.strikes++;
             globe.setHL(f, 'bad');
-            setTimeout(() => { if (G && G.h === h && !chain.includes(f) && f !== e) globe.clearHL(f); }, 650);
-            globe.burst(xy, COLORS.bad, 12);
-            strike(`${f.name} doesn’t border ${tip.name}`);
+            setTimeout(() => { if (G && G.h === h && !chain.includes(f) && f !== e) globe.clearHL(f); }, 900);
+            if (at2) globe.burst(at2, COLORS.bad, 12);
+            shakeInput('', '#route-box');
+            strike(`${f.name} doesn\u2019t border ${tip.name}`);
             return;
           }
           chain.push(f); moves++;
           sfx.click();
-          globe.burst(xy, COLORS.warn, 12);
+          if (at2) globe.burst(at2, COLORS.warn, 12);
           drawChain();
           if (f === e) {
+            $('#route-input').disabled = true;
+            $('#route-input').blur();
             const perfect = moves === par && h.strikes === 0;
             resolve({
               ok: true, great: perfect,
@@ -353,6 +374,8 @@
         cleanup() { $('#chain').classList.add('hidden'); },
       };
       function showRoute() {
+        $('#route-input').disabled = true;
+        $('#route-input').blur();
         globe.arcs = [];
         route.slice(1, -1).forEach(c => { if (!chain.includes(c)) globe.setHL(c, 'hint'); });
         const now = performance.now();
@@ -681,17 +704,19 @@
   }
 
   function renderChain(chain, end, par) {
-    const items = chain.map((c, i) => `<span class="chip ${i === 0 ? 'chip-start' : c === end ? 'chip-end' : 'chip-path'}">${esc(c.name)}</span>`);
+    const items = chain.map((c, i) => `<button class="chip ${i === 0 ? 'chip-start' : c === end ? 'chip-end' : 'chip-path'}" data-i="${i}" title="Back up to here">${esc(c.name)}</button>`);
     if (chain[chain.length - 1] !== end) items.push(`<span class="chip chip-end ghost">${esc(end.name)}</span>`);
     const steps = chain.length - 1;
-    $('#chain').innerHTML = `<div class="chain-row">${items.join('<span class="chain-sep">›</span>')}</div>
-      <div class="chain-meta">Steps <b>${steps}</b> / par ${par} · click an earlier country to backtrack</div>`;
+    $('#chain-chips').innerHTML = `<div class="chain-row">${items.join('<span class="chain-sep">›</span>')}</div>
+      <div class="chain-meta">Steps <b>${steps}</b> / par ${par} · click an earlier country to back up</div>`;
     const row = $('#chain .chain-row');
     row.scrollLeft = row.scrollWidth;
+    const tip = chain[chain.length - 1];
+    $('#route-input').placeholder = tip === end ? '' : `Name a country bordering ${tip.name}\u2026`;
   }
 
   // ---------- Shape Shift UI ----------
-  let sugIdx = -1;
+  const AC = new Map(); // input element -> { list, idx }
 
   function showShape(target, rotate) {
     $('#shape-panel').classList.remove('hidden');
@@ -700,7 +725,7 @@
     const input = $('#guess-input');
     input.value = '';
     input.disabled = false;
-    renderSuggest();
+    renderSuggest(input);
     drawShape(target, rotate, false);
     setTimeout(() => input.focus(), 50);
   }
@@ -748,7 +773,7 @@
     row.innerHTML = `<span class="g-name">${esc(f.name)}</span><span class="g-dist">${fmt(d)} km</span><span class="g-dir">${arrowFor(bearing(f.focus, target.focus))}</span>`;
     $('#guess-list').appendChild(row);
     $('#guess-input').value = '';
-    renderSuggest();
+    renderSuggest($('#guess-input'));
   }
 
   function addBadge(text) {
@@ -758,10 +783,10 @@
     $('#shape-badges').appendChild(b);
   }
 
-  function shakeInput(msg) {
-    const box = $('#guess-box');
+  function shakeInput(msg, sel = '#guess-box') {
+    const box = $(sel);
     box.classList.remove('shake-x'); void box.offsetWidth; box.classList.add('shake-x');
-    toast(msg);
+    if (msg) toast(msg);
   }
 
   function suggestions(q) {
@@ -777,10 +802,37 @@
     return [...new Set([...aliasHit, ...starts, ...has])].slice(0, 6);
   }
 
-  function renderSuggest() {
-    const list = suggestions($('#guess-input').value);
-    sugIdx = list.length ? 0 : -1;
-    $('#suggest').innerHTML = list.map((n, i) => `<li class="${i === sugIdx ? 'on' : ''}" data-name="${esc(n)}">${esc(n)}</li>`).join('');
+  function renderSuggest(input) {
+    const st = AC.get(input);
+    const names = suggestions(input.value);
+    st.idx = names.length ? 0 : -1;
+    st.list.innerHTML = names.map((n, i) => `<li class="${i === st.idx ? 'on' : ''}" data-name="${esc(n)}">${esc(n)}</li>`).join('');
+  }
+
+  function bindAutocomplete(input, list) {
+    const st = { list, idx: -1 };
+    AC.set(input, st);
+    input.addEventListener('input', () => renderSuggest(input));
+    input.addEventListener('keydown', e => {
+      const items = [...list.querySelectorAll('li')];
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!items.length) return;
+        st.idx = (st.idx + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items.forEach((li, i) => li.classList.toggle('on', i === st.idx));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const pick = items[st.idx] ? items[st.idx].dataset.name : input.value;
+        if (pick.trim()) submitGuess(pick);
+      } else if (e.key === 'Escape') {
+        input.value = '';
+        renderSuggest(input);
+      }
+    });
+    list.addEventListener('mousedown', e => {
+      const li = e.target.closest('li');
+      if (li) { e.preventDefault(); submitGuess(li.dataset.name); }
+    });
   }
 
   function submitGuess(name) {
@@ -1074,26 +1126,11 @@
       if (G && G.state === 'reveal') clearTimeout(G.auto);
     };
 
-    const input = $('#guess-input');
-    input.addEventListener('input', renderSuggest);
-    input.addEventListener('keydown', e => {
-      const items = [...document.querySelectorAll('#suggest li')];
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (!items.length) return;
-        sugIdx = (sugIdx + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-        items.forEach((li, i) => li.classList.toggle('on', i === sugIdx));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const pick = items[sugIdx] ? items[sugIdx].dataset.name : input.value;
-        if (pick.trim()) submitGuess(pick);
-      } else if (e.key === 'Escape') {
-        input.value = ''; renderSuggest();
-      }
-    });
-    $('#suggest').addEventListener('mousedown', e => {
-      const li = e.target.closest('li');
-      if (li) { e.preventDefault(); submitGuess(li.dataset.name); }
+    bindAutocomplete($('#guess-input'), $('#suggest'));
+    bindAutocomplete($('#route-input'), $('#route-suggest'));
+    $('#chain-chips').addEventListener('click', e => {
+      const chip = e.target.closest('.chip[data-i]');
+      if (chip && G && G.h && G.h.backtrack) G.h.backtrack(Number(chip.dataset.i));
     });
 
     document.addEventListener('keydown', e => {

@@ -6,7 +6,7 @@ A fast, unforgiving geography game played on a 3D globe with no labels. Five mod
 | --- | --- | --- |
 | **Country Hunt** | A country name appears; click it on the globe | Targets get smaller each round (all the way down to microstates); the timer drops from 18s to 7s |
 | **Pin Drop** | Drop a pin on a city | The allowed radius shrinks from 2,000 km to 250 km; cities get more obscure |
-| **Border Run** | Chain bordering countries from A to B | Clicking a non-neighbor costs a life; par grows from 2 to 8 steps |
+| **Border Run** | Get from A to B by typing each bordering country in turn | No clicking: you have to know the names. Naming a non-neighbor costs a life; par grows from 2 to 8 steps |
 | **Shape Shift** | Name a country from its silhouette | 3 guesses with distance/direction clues; later rounds rotate the shape |
 | **Daily Gauntlet** | 10 mixed rounds, same for everyone today | No lives, and only your first run of the day counts (replays are practice). Every miss shows up in your shareable 🟩🟨🟥 grid |
 
@@ -14,7 +14,7 @@ Streaks build a score multiplier (×1.5 at 3 in a row, up to ×4). Daily #1 was 
 
 **Stats** (from the menu or the results screen) track your lifetime record in the browser: accuracy, best streak, an atlas of every country you've found, per-mode win rates, daily streaks with a 14-day score chart, highlights like your fastest find and closest pin, and your "nemesis" countries.
 
-**Controls:** drag to spin · scroll or pinch to zoom · click to answer · `Space` next round · `+`/`-` zoom · `Esc` quit
+**Controls:** drag to spin · scroll or pinch to zoom · click or type to answer · `Space` next round · `+`/`-` zoom · `Esc` quit
 
 ## Run locally
 

@@ -170,7 +170,7 @@ const MODES = {
   },
   border: {
     name: 'Border Run', diff: 4,
-    desc: 'Chain bordering countries from start to finish. Click a non-neighbor and it costs a life.',
+    desc: 'Get from start to finish by naming each bordering country in turn. Name a non-neighbor and it costs a life.',
     icon: '<svg viewBox="0 0 24 24"><circle cx="4.5" cy="18" r="2.5"/><circle cx="19.5" cy="6" r="2.5"/><path d="M6.5 16.5l3-3 3 2 5-7.5"/></svg>',
   },
   shape: {

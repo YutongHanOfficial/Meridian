@@ -178,20 +178,20 @@ body.playing #globe { cursor: crosshair; }
 .guess-box { position: relative; margin-top: 10px; }
 .guess-box.shake-x { animation: shakeX 0.35s; }
 @keyframes shakeX { 25% { transform: translateX(-8px); } 50% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
-#guess-input {
+#guess-input, #route-input {
   width: 100%; padding: 13px 16px; border-radius: 12px; border: 1px solid var(--line-strong);
   background: rgba(0, 0, 0, 0.35); color: var(--text); font: 600 16px var(--ui); outline: none;
   user-select: text; -webkit-user-select: text;
 }
-#guess-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(94, 230, 255, 0.18); }
-#suggest {
+#guess-input:focus, #route-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(94, 230, 255, 0.18); }
+#suggest, #route-suggest {
   list-style: none; margin: 0; padding: 4px; position: absolute; left: 0; right: 0; bottom: calc(100% + 6px);
   background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 12px;
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
 }
-#suggest:empty { display: none; }
-#suggest li { padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-#suggest li.on, #suggest li:hover { background: rgba(94, 230, 255, 0.14); color: #fff; }
+#suggest:empty, #route-suggest:empty { display: none; }
+#suggest li, #route-suggest li { padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+#suggest li.on, #suggest li:hover, #route-suggest li.on, #route-suggest li:hover { background: rgba(94, 230, 255, 0.14); color: #fff; }
 
 /* ---------- feedback ---------- */
 #feedback {
@@ -430,3 +430,12 @@ body.shake #globe, body.shake #hud { animation: shake 0.4s; }
 .dcol.pre { pointer-events: none; }
 #stats { background: rgba(3, 7, 18, 0.88); }
 .stats-card { background: rgba(10, 22, 48, 0.96); }
+
+/* Border Run typing */
+#chain { width: min(560px, calc(100vw - 130px)); z-index: 13; }
+#chain .chip { cursor: pointer; font-family: inherit; }
+#chain .chip.ghost { cursor: default; }
+#chain .chip:hover:not(.ghost) { filter: brightness(1.2); }
+#route-box { margin-top: 10px; }
+#route-input:disabled { opacity: 0.5; }
+@media (max-width: 700px) { #chain { width: calc(100vw - 24px); } }
